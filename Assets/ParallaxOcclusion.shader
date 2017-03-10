@@ -27,7 +27,6 @@
 		struct Input {
 			float2 texcoord;
 			float3 eye;
-			float3 normal;
 			float sampleRatio;
 		};
 
@@ -39,93 +38,18 @@
 		uint _ParallaxMinSamples;
 		uint _ParallaxMaxSamples;
 		
-		// Shamelessly derived from: 
-		// https://www.gamedev.net/resources/_/technical/graphics-programming-and-theory/a-closer-look-at-parallax-occlusion-mapping-r3262
-		// License: https://www.gamedev.net/resources/_/gdnethelp/gamedevnet-open-license-r2956
+		#include<ParallaxOcclusion.cginc>
 		
 		void vert(inout appdata_full IN, out Input OUT) {
-			
-			float4x4 mW = unity_ObjectToWorld;
-			float3 binormal = cross( IN.normal, IN.tangent.xyz ) * IN.tangent.w;
-			float3 EyePosition = _WorldSpaceCameraPos;
-			
-			float3 N = IN.normal;
-			// Need to do it this way for W-normalisation and.. stuff.
-			float4 localCameraPos = mul(unity_WorldToObject, float4(_WorldSpaceCameraPos, 1));
-			float3 eyeLocal = IN.vertex - localCameraPos;
-			float4 eyeGlobal = mul( float4(eyeLocal, 1), mW  );
-			float3 E = eyeGlobal.xyz;
-			
-			float3x3 tangentToWorldSpace;
-
-			tangentToWorldSpace[0] = mul( normalize( IN.tangent ), mW );
-			tangentToWorldSpace[1] = mul( normalize(    binormal ), mW );
-			tangentToWorldSpace[2] = mul( normalize( IN.normal ), mW );
-			
-			float3x3 worldToTangentSpace = transpose(tangentToWorldSpace);
-			
-			OUT.eye	= mul( E, worldToTangentSpace );
-			OUT.normal	= mul( N, worldToTangentSpace );
+			parallax_vert( IN.vertex, IN.normal, IN.tangent, OUT.eye, OUT.sampleRatio );
 			OUT.texcoord = IN.texcoord;
-			OUT.sampleRatio = 1-dot( normalize(E), -N );
 		}
 
 		void surf (Input IN, inout SurfaceOutputStandard o) {
 		
-			float fHeightMapScale = _Parallax;
-		
-			float fParallaxLimit = -length( IN.eye.xy ) / IN.eye.z;
-			fParallaxLimit *= fHeightMapScale;
-			
-			float2 vOffsetDir = normalize( IN.eye.xy );
-			float2 vMaxOffset = vOffsetDir * fParallaxLimit;
-			
-			int nNumSamples = (int)lerp( _ParallaxMinSamples, _ParallaxMaxSamples, saturate(IN.sampleRatio) );
-			
-			float fStepSize = 1.0 / (float)nNumSamples;
-			
-			float2 dx = ddx( IN.texcoord );
-			float2 dy = ddy( IN.texcoord );
-			
-			float fCurrRayHeight = 1.0;
-			float2 vCurrOffset = float2( 0, 0 );
-			float2 vLastOffset = float2( 0, 0 );
-
-			float fLastSampledHeight = 1;
-			float fCurrSampledHeight = 1;
-
-			int nCurrSample = 0;
-			
-			while ( nCurrSample < nNumSamples )
-			{
-			  fCurrSampledHeight = tex2Dgrad(_ParallaxMap, IN.texcoord + vCurrOffset, dx, dy ).r;
-			  if ( fCurrSampledHeight > fCurrRayHeight )
-			  {
-				float delta1 = fCurrSampledHeight - fCurrRayHeight;
-				float delta2 = ( fCurrRayHeight + fStepSize ) - fLastSampledHeight;
-
-				float ratio = delta1/(delta1+delta2);
-
-				vCurrOffset = (ratio) * vLastOffset + (1.0-ratio) * vCurrOffset;
-
-				nCurrSample = nNumSamples + 1;
-			  }
-			  else
-			  {
-				nCurrSample++;
-
-				fCurrRayHeight -= fStepSize;
-
-				vLastOffset = vCurrOffset;
-				vCurrOffset += fStepSize * vMaxOffset;
-
-				fLastSampledHeight = fCurrSampledHeight;
-			  }
-			}
-			
-			float2 vFinalCoords = IN.texcoord + vCurrOffset;
-			
-			float2 uv = vFinalCoords;
+			float2 offset = parallax_offset (_Parallax, IN.eye, IN.sampleRatio, IN.texcoord, 
+			_ParallaxMap, _ParallaxMinSamples, _ParallaxMaxSamples );
+			float2 uv = IN.texcoord + offset;
 			fixed4 c = tex2D (_MainTex, uv) * _Color;
 			o.Albedo = c.rgb;
 			o.Normal = UnpackScaleNormal(tex2D(_BumpMap, uv), _BumpScale);
@@ -133,7 +57,6 @@
 			o.Smoothness = _Glossiness;
 			o.Alpha = c.a;
 		}
-		// End of derived code
 		
 		ENDCG
 	}
