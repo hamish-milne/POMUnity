@@ -20,8 +20,6 @@
 
 		#pragma target 3.0
 		
-		
-
 		sampler2D _MainTex;
 		sampler2D _BumpMap;
 		sampler2D _ParallaxMap;
@@ -51,9 +49,12 @@
 			float3 binormal = cross( IN.normal, IN.tangent.xyz ) * IN.tangent.w;
 			float3 EyePosition = _WorldSpaceCameraPos;
 			
-			float3 P = mul( float4( IN.vertex ), mW ).xyz;
 			float3 N = IN.normal;
-			float3 E = P - EyePosition.xyz;
+			// Need to do it this way for W-normalisation and.. stuff.
+			float4 localCameraPos = mul(unity_WorldToObject, float4(_WorldSpaceCameraPos, 1));
+			float3 eyeLocal = IN.vertex - localCameraPos;
+			float4 eyeGlobal = mul( float4(eyeLocal, 1), mW  );
+			float3 E = eyeGlobal.xyz;
 			
 			float3x3 tangentToWorldSpace;
 
